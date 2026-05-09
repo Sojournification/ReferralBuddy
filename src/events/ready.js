@@ -1,7 +1,8 @@
 'use strict';
 
-const db           = require('../utils/database');
-const inviteCache  = require('../utils/inviteCache');
+const db            = require('../utils/database');
+const inviteCache   = require('../utils/inviteCache');
+const inviteSlotsDb = require('../utils/inviteSlotsDb');
 const { log, consoleLog } = require('../utils/logger');
 const { runBackup } = require('../utils/backup');
 const { purgeUnusedInvites } = require('../utils/invitePurge');
@@ -23,15 +24,28 @@ module.exports = {
         // Sync invite codes into the DB.
         // Uses syncInviteCode so a restart never overwrites a human-claimed
         // record with the bot's ID (the bot creates invites on members' behalf).
+        let newSlots = 0;
         for (const [, inv] of invites) {
           db.syncInviteCode(
             inv.code,
             inv.inviter?.id  ?? null,
             inv.inviter?.bot ?? false,
           );
+
+          // ── Seed invite slot counts for non-bot invites ──────────────────
+          // Bot-created referral invites are tracked when they are created.
+          // Here we only count user-created invites we haven't seen before,
+          // so channel slot totals reflect real server usage on startup.
+          if (inv.inviter?.id === client.user.id) continue;
+          const channelId = inv.channelId ?? inv.channel?.id;
+          if (!channelId) continue;
+          if (inviteSlotsDb.hasSeenCode(inv.code)) continue;
+          inviteSlotsDb.increment(channelId);
+          inviteSlotsDb.markCode(inv.code, channelId, false);
+          newSlots++;
         }
 
-        consoleLog('invite', `Cached ${invites.size} invite(s) for ${guild.name}`);
+        consoleLog('invite', `Cached ${invites.size} invite(s) for ${guild.name}${newSlots > 0 ? `, seeded ${newSlots} new slot count(s)` : ''}`);
       } catch (err) {
         consoleLog('error', `Could not fetch invites for ${guild.name}: ${err.message}`);
       }

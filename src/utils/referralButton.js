@@ -1,9 +1,10 @@
 'use strict';
 
-const db                        = require('./database');
-const inviteCache               = require('./inviteCache');
-const { log }                   = require('./logger');
-const { findInviteChannel }     = require('./invitePurge');
+const db                          = require('./database');
+const inviteCache                 = require('./inviteCache');
+const inviteSlotsDb               = require('./inviteSlotsDb');
+const { log }                     = require('./logger');
+const { findAvailableChannel }    = require('./invitePurge');
 
 const COOLDOWN_HOURS = 1;
 
@@ -65,13 +66,10 @@ async function handleReferralButton(interaction, client) {
   // Update cooldown now that we're committed to generating
   db.upsertCooldown(member.id);
 
-  // ── Sync existing guild invites created by this member ────────────────────
-  // We fetch all guild invites once here and reuse the collection for channel
-  // selection — avoids a second API call inside findInviteChannel.
-  let existingInvites;
+  // ── Sync any existing Discord invites this member owns into the DB ────────
   try {
-    existingInvites = await guild.invites.fetch();
-    for (const [, inv] of existingInvites) {
+    const existing = await guild.invites.fetch();
+    for (const [, inv] of existing) {
       if (inv.inviter?.id === member.id) {
         db.upsertInviteCode(inv.code, member.id, false);
       }
@@ -81,12 +79,12 @@ async function handleReferralButton(interaction, client) {
     return interaction.editReply('❌ Could not fetch server invites. Please try again.');
   }
 
-  // ── Resolve invite channel (with multi-channel rotation) ─────────────────
-  const targetChannel = await findInviteChannel(guild, existingInvites);
+  // ── Pick a random available channel (viewable by @everyone, under cap) ────
+  const targetChannel = findAvailableChannel(guild);
 
   if (!targetChannel) {
     return interaction.editReply(
-      '❌ No invite channel available. All configured channels are at capacity (50 invites each), or no referral channel has been set. Ask an admin to add a new invite channel via `/setup`.'
+      '❌ No invite channel is available right now — every channel visible to @everyone has reached the 50-invite cap. Ask an admin to check the server\'s invite settings.'
     );
   }
 
@@ -107,6 +105,10 @@ async function handleReferralButton(interaction, client) {
   db.upsertInviteCode(invite.code, member.id, false);
   db.markExistingLink(invite.code);
   inviteCache.set(invite.code, 0);
+
+  // Track the invite in the slot counter so the channel stays accurate
+  inviteSlotsDb.increment(targetChannel.id);
+  inviteSlotsDb.markCode(invite.code, targetChannel.id, true);
 
   // ── DM the link to the member ─────────────────────────────────────────────
   let dmOk = false;

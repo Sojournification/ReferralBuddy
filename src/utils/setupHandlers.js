@@ -263,55 +263,6 @@ async function handleSetupButton(interaction, client) {
     return interaction.showModal(modal);
   }
 
-  // ── Add Invite Channel ───────────────────────────────────────────────────────
-  if (id === 'setup_btn_add_invite_channel') {
-    const select = new ChannelSelectMenuBuilder()
-      .setCustomId('setup_select_invite_channel')
-      .setPlaceholder('Select a text channel to use for invite creation')
-      .setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement);
-
-    return interaction.reply({
-      content: '**Select a channel to add to the invite pool:**\nInvites will be created here when other channels are full.',
-      components: [new ActionRowBuilder().addComponents(select)],
-      flags: 1 << 6,
-    });
-  }
-
-  // ── Remove Invite Channel ────────────────────────────────────────────────────
-  if (id === 'setup_btn_remove_invite_channel') {
-    const channels = db.listInviteChannels();
-    if (!channels.length) {
-      return interaction.reply({
-        content: '❌ No invite channels are currently configured.',
-        flags: 1 << 6,
-      });
-    }
-
-    const select = new ChannelSelectMenuBuilder()
-      .setCustomId('setup_select_remove_invite_channel')
-      .setPlaceholder('Select the channel to remove from the invite pool')
-      .setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement);
-
-    return interaction.reply({
-      content: '**Select a channel to remove from the invite pool:**',
-      components: [new ActionRowBuilder().addComponents(select)],
-      flags: 1 << 6,
-    });
-  }
-
-  // ── View Invite Channels ─────────────────────────────────────────────────────
-  if (id === 'setup_btn_view_invite_channels') {
-    const channels = db.listInviteChannels();
-    const lines    = channels.length
-      ? channels.map((r, i) => `**${i + 1}.** <#${r.channel_id}> — added \`${r.added_at} UTC\``).join('\n')
-      : '*No invite channels configured — the bot will fall back to the Referral Channel.*';
-
-    return interaction.reply({
-      content: `**🔀 Invite Channels (${channels.length})**\n${lines}`,
-      flags: 1 << 6,
-    });
-  }
-
   // ── Chat Advert sub-panel ────────────────────────────────────────────────────
   if (id === 'setup_btn_chat_advert') {
     const enabled  = db.getConfig('advert_enabled') !== '0';
@@ -453,21 +404,6 @@ async function handleSetupSelect(interaction, client) {
   if (!isAuthorized(interaction.member)) return denyUnauthorized(interaction);
 
   const id = interaction.customId;
-
-
-  if (id === 'setup_select_invite_channel') {
-    const channelId = interaction.values[0];
-    db.addInviteChannel(channelId);
-    await log(client, 'admin', `Admin \`${interaction.user.id}\` added <#${channelId}> to the invite channel pool.`);
-    return interaction.update({ content: `✅ <#${channelId}> added to the invite channel pool.`, components: [] });
-  }
-
-  if (id === 'setup_select_remove_invite_channel') {
-    const channelId = interaction.values[0];
-    db.removeInviteChannel(channelId);
-    await log(client, 'admin', `Admin \`${interaction.user.id}\` removed <#${channelId}> from the invite channel pool.`);
-    return interaction.update({ content: `✅ <#${channelId}> removed from the invite channel pool.`, components: [] });
-  }
 
 
   if (id === 'setup_select_advert_remove') {
@@ -670,9 +606,6 @@ const SETUP_BUTTON_IDS = new Set([
   'setup_join_customise',
   'setup_btn_add_milestone',
   'setup_btn_remove_milestone',
-  'setup_btn_add_invite_channel',
-  'setup_btn_remove_invite_channel',
-  'setup_btn_view_invite_channels',
   'setup_btn_chat_advert',
   'setup_advert_add_channel',
   'setup_advert_remove_channel',
@@ -682,8 +615,6 @@ const SETUP_BUTTON_IDS = new Set([
 ]);
 
 const SETUP_SELECT_IDS = new Set([
-  'setup_select_invite_channel',
-  'setup_select_remove_invite_channel',
   'setup_select_advert_remove',
 ]);
 
